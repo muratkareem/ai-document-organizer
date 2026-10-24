@@ -1,4 +1,5 @@
 """Bounded text extraction; documents are never executed."""
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -34,8 +35,10 @@ def extract_text(path: Path, max_chars: int = 6000) -> ExtractedText:
     # O_NOFOLLOW closes the final-component symlink race on supported platforms.
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        with open_directory(path.parent) as directory_fd, os.fdopen(
-            os.open(path.name, flags, dir_fd=directory_fd), "rb") as stream:
+        directory = open_directory(path.parent) if os.name == "posix" else nullcontext(None)
+        with directory as directory_fd, os.fdopen(
+            os.open(path.name if directory_fd is not None else path, flags,
+                    dir_fd=directory_fd), "rb") as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ExtractionError("Source is not a regular file")
             suffix = path.suffix.lower()
@@ -43,6 +46,8 @@ def extract_text(path: Path, max_chars: int = 6000) -> ExtractedText:
                 raw = stream.read(max_chars * 4 + 3)
                 text = raw.decode("utf-8-sig", errors="replace")[:max_chars]
                 warning = "Invalid UTF-8 bytes were replaced." if "\ufffd" in text else None
+                if not text.strip():
+                    warning = "No extractable text; using filename only."
                 return ExtractedText(text, warning)
             if suffix == ".pdf":
                 # PyMuPDF requires a path or bytes; a verified descriptor supplies bytes.

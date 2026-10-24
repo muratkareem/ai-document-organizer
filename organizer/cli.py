@@ -101,7 +101,7 @@ def main(argv: list[str] | None = None, *, console: Console | None = None) -> in
     try:
         return run(args, console)
     except KeyboardInterrupt:
-        console.print("Interrupted. Review any moves already reported as successful.", style="yellow")
+        console.print("Interrupted. Review completed moves and inspect output for partial copies before retrying.", style="yellow")
         return 130
     except (OSError, ValueError, ExtractionError, ClassificationError) as exc:
         console.print(Text(f"Error: {exc}", style="red"))
