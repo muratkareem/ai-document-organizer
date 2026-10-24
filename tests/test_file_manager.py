@@ -127,3 +127,39 @@ def test_dangling_collision(planned):
     planned.destination.symlink_to("missing")
     new = plan_item(planned.source, planned.source.parent / "output", planned.classification)
     assert new.destination.name == "report_1.txt"
+
+
+def test_reserve_plan_names(planned):
+    planned.destination.parent.mkdir(parents=True)
+    planned.destination.write_text("existing")
+    first = plan_item(planned.source, planned.source.parent / "output", planned.classification)
+    second_source = planned.source.with_name("report_1.txt")
+    second_source.write_text("second")
+    second = plan_item(second_source, planned.source.parent / "output",
+                       planned.classification, reserved={first.destination})
+    assert first.destination.name == "report_1.txt"
+    assert second.destination.name == "report_1_1.txt"
+    execute(first, confirmed=True)
+    execute(second, confirmed=True)
+    assert second.destination.read_text() == "second"
+
+
+def test_changed_during_copy_keeps_source(planned, monkeypatch):
+    import shutil
+    original = shutil.copyfileobj
+    def change(reader, writer):
+        original(reader, writer)
+        planned.source.write_text("Changed concurrently")
+    monkeypatch.setattr("organizer.file_manager.shutil.copyfileobj", change)
+    with pytest.raises(OSError, match="Source changed"):
+        execute(planned, confirmed=True)
+    assert planned.source.read_text() == "Changed concurrently"
+
+
+def test_failed_source_unlink_keeps_both(planned, monkeypatch):
+    def denied(*args, **kwargs):
+        raise PermissionError("cannot delete source")
+    monkeypatch.setattr("organizer.file_manager.os.unlink", denied)
+    with pytest.raises(OSError, match="retained destination"):
+        execute(planned, confirmed=True)
+    assert planned.source.read_bytes() == planned.destination.read_bytes()

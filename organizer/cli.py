@@ -49,6 +49,7 @@ def run(args: argparse.Namespace, console: Console) -> int:
     console.print(f"Found {len(found.files)} supported documents.")
     classifier = OllamaClassifier(args.model, args.max_chars, args.timeout)
     plan = []
+    reserved: set[Path] = set()
     console.print("Analyzing documents with Ollama...")
     for path in track(found.files, description="Analyzing", console=console):
         original = fingerprint(path)
@@ -58,7 +59,9 @@ def run(args: argparse.Namespace, console: Console) -> int:
         classification = classifier.classify(path.name, extracted.text)
         if fingerprint(path) != original:
             raise ValueError(f"Document changed during analysis: {path.name}; run again")
-        plan.append(plan_item(path, output, classification, original))
+        item = plan_item(path, output, classification, original, reserved)
+        plan.append(item)
+        reserved.add(item.destination)
     table = Table(title="Proposed organization", show_lines=True)
     for heading in ("File", "Category", "Destination", "Reason"):
         table.add_column(heading)

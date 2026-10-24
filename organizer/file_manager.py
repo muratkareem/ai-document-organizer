@@ -47,7 +47,8 @@ def validate_output(path: Path) -> Path:
 
 
 def plan_item(source: Path, output: Path, classification: Classification,
-              original: Fingerprint | None = None) -> PlanItem:
+              original: Fingerprint | None = None,
+              reserved: set[Path] | None = None) -> PlanItem:
     source = safe_path(source)
     original = original or fingerprint(source)
     category = Category(classification.category)
@@ -55,7 +56,7 @@ def plan_item(source: Path, output: Path, classification: Classification,
     validate_output(directory)
     destination = directory / source.name
     counter = 0
-    while os.path.lexists(destination):
+    while os.path.lexists(destination) or destination in (reserved or set()):
         counter += 1
         destination = directory / f"{source.stem}_{counter}{source.suffix}"
     return PlanItem(source, destination, classification, original)
@@ -134,6 +135,7 @@ def move_file(item: PlanItem, source_root: Path, output_root: Path, *,
                     if (target.st_dev, target.st_ino, target.st_size) != (written.st_dev, written.st_ino, item.original.size):
                         raise ValueError("Destination changed during copying")
                     # Validate visible directories again before deleting the source.
+                    safe_path(source_root)
                     if not os.path.samestat(source_root.stat(), os.fstat(source_dir)):
                         raise ValueError("Source directory changed during copying")
                     safe_path(destination)

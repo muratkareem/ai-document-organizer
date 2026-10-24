@@ -8,6 +8,9 @@ from zipfile import BadZipFile
 import pymupdf
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
+from lxml.etree import XMLSyntaxError
+
+from organizer.file_manager import open_directory
 
 from organizer.scanner import safe_path
 
@@ -31,7 +34,8 @@ def extract_text(path: Path, max_chars: int = 6000) -> ExtractedText:
     # O_NOFOLLOW closes the final-component symlink race on supported platforms.
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        with os.fdopen(os.open(path, flags), "rb") as stream:
+        with open_directory(path.parent) as directory_fd, os.fdopen(
+            os.open(path.name, flags, dir_fd=directory_fd), "rb") as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 raise ExtractionError("Source is not a regular file")
             suffix = path.suffix.lower()
@@ -68,7 +72,7 @@ def extract_text(path: Path, max_chars: int = 6000) -> ExtractedText:
                     if length >= max_chars:
                         break
                 text = "".join(chunks)
-    except (OSError, ValueError, BadZipFile, PackageNotFoundError, RuntimeError) as exc:
+    except (OSError, ValueError, BadZipFile, PackageNotFoundError, RuntimeError, XMLSyntaxError, KeyError) as exc:
         raise ExtractionError(f"Cannot extract {path.name}: {type(exc).__name__}") from exc
     if not text.strip():
         return ExtractedText("", "No extractable text; using filename only (no OCR).")
